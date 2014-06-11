@@ -1,0 +1,168 @@
+from classes.NeoAccount import *
+from threading import Thread
+import urllib2, re
+from cookielib import CookieJar
+from urllib import urlencode
+import urllib
+import threading
+import cookielib
+import sys
+import time
+import random
+
+neouser = "ysocurious"
+neopass = "maggie11111"
+
+neo = NeoAccount(neouser,neopass)
+
+def import_list():
+	items = [line.rstrip() for line in open('list.txt')]
+	return items
+def get_stock():
+	html = neo.get('/halloween/garage.phtml', referer = '')
+	stockitem = re.findall(r'oname="(.*?)"', html)
+	stockoii = re.findall(r'oii="(.*)" oname', html)
+	return stockitem, stockoii, html
+def find_buys(items, stockitem):
+	buythis = []
+	for element in items:
+		if element in stockitem:
+			buythis.append(element)
+			location = stockitem.index(element)
+			break
+		else:
+			location = None
+	return buythis, location
+def buy_item(location, stockoii):
+	itemoii = stockoii[location]
+	postdata = {'purchase': 1, 'oii': itemoii, 'neopets': '123'}
+	bought = neo.post('http://www.neopets.com/halloween/garage.phtml',postdata, 'http://www.neopets.com/halloween/garage.phtml')
+	return bought
+def findNST(html):
+	NST = re.findall(r'<td id="nst">(.*) am', html)
+	if NST == []:
+		NST = re.findall(r'<td id="nst">(.*) pm', html)
+	p = re.compile('\d+')
+	Times = p.findall(NST[0])
+	return NST, Times
+def find_firstrs():
+	print "Finding first RS"
+	stocki, stocko, html = get_stock()
+	Checkit = checkRSban(html)
+	while Checkit == True:
+		print 'Restock Banned'
+		time.sleep(5000)
+		stocki, stocko, html = get_stock()
+		Checkit = checkRSban(html)
+	itemsinshop = len(stocki)
+	original = itemsinshop
+	while original == 24:  #ENSURE NOT FULL STOCK/FRESH RESTOCK
+		print "Original was 24"
+		time.sleep(15)
+		stock1, stocko, html = get_stock()
+		itemsinshop = len(stocki)
+		original = itemsinshop
+	print original
+	print "Entering While Loop"
+	time.sleep(30)
+	while original >= itemsinshop:
+		print "No Restock Detected."
+		time.sleep(12)
+		stocki, stocko, html = get_stock()
+		Checking = checkRSban(html)
+		while Checking == True:
+			time.sleep(5000)
+			stocki, stocko, html = get_stock()
+			Checking = checkRSban(html)
+		NST, Times = findNST(html)
+		#print int(Times[2])
+		if int(Times[2]) < 15 and itemsinshop > original:
+			print "Restocked at a shitty time. Pausing to find right restock time."
+			stocki, stocko, html = get_stock()
+			original = len(stocki)
+			itemsinshop = original
+			print itemsinshop
+			print "Waiting until 15s."
+			time.sleep(12 - int(Times[2]))
+		else:
+			itemsinshop = len(stocki)
+			print '# of New Items in Shop'
+			print itemsinshop
+			print NST
+	print "Found first restock @"
+	print NST
+	return Times
+	
+def checkRS():
+	endtime = time.time() + 60
+	while time.time() < endtime:
+		firststock, stockoii, html = get_stock()
+		buyables, i = find_buys(items, firststock)
+		NSTC, TimeC = findNST(html)
+		print NSTC
+		print 'Shop Stock #Items'
+		print len(firststock)
+		if i != None:
+			page = buy_item(i, stockoii)
+			print page
+		else:
+			time.sleep(1)
+	return firststock, html
+def checksecondRS():
+	endtime = time.time() + 60
+	while time.time() < endtime:
+		secondstock, stockoii, html = get_stock()
+		buyables, i = find_buys(items, secondstock)
+		NSTC2, TimeC2 = findNST(html)
+		print NSTC2
+		print 'Shop Stock #Items'
+		print len(secondstock)
+		if i != None:
+			page = buy_item(i, stockoii)
+			print page
+		else:
+			time.sleep(3)	
+	return secondstock, html
+def checkRSban(html): #Is this even working?!
+	for line in html:
+		if '<div class="errorMessage"><b>Error: </b>Sorry, please try again later.</div>' in line:
+			return True
+		else:
+			return False
+def main():
+	end = time.time() + 10800
+	while time.time() < end:
+		print "First and Second Refreshes"
+		firststock, html1 = checkRS()
+		secondstock, html2 = checksecondRS()
+		FirstCheck = checkRSban(html1)
+		SecondCheck = checkRSban(html2)
+		if FirstCheck or SecondCheck == True:
+			time.sleep(5000)
+			print "Restock Banned"
+			break
+		else:
+			if len(firststock) + 3 < len(secondstock):
+				stockafter, oiiafter, htmlafter = get_stock()
+				nstafter, timeafter = findNST(htmlafter)
+				secondspartialafter = 60 - int(timeafter[2])
+				timetosleep = 300 + secondspartialafter
+				time.sleep(timetosleep)
+			else:
+				stockafter,oiiafter,htmlafter = get_stock()
+				nstafter, timeafter = findNST(htmlafter)
+				secondspartialafter = 60 - int(timeafter[2])
+				timetosleep = 240 + secondspartialafter
+				time.sleep(timetosleep)
+
+				
+items = import_list()
+neo.login()
+while True:
+	Times = find_firstrs()
+	SecondsPartial = 60 - int(Times[2])
+	SecondTotal = 360 + SecondsPartial
+	time.sleep(SecondTotal)
+	main()
+	
+
